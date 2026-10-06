@@ -1,0 +1,19 @@
+services:
+  tradecraft:
+    build: .
+    image: tradecraft:latest
+    container_name: tradecraft
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      SITE_NAME: Tradecraft
+      # CREATE_PASSWORD: "only-my-friends"   # require this to create rooms
+      # BASE_PATH: /tradecraft               # if you serve it under a sub-path
+      # ROOM_TTL_HOURS: "48"
+    volumes:
+      # Saved rooms (rooms.json) and your own word lists (wordlists/*.txt).
+      - ./data:/data
+    # The container runs as uid 1000. If ./data is owned by someone else
+    # (Unraid uses 99:100), set the matching ids here:
+    # user: "99:100"

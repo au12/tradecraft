@@ -1,0 +1,20 @@
+{
+  "name": "tradecraft",
+  "version": "1.0.0",
+  "description": "A self-hosted, real-time word-association spy game for teams. A ground-up rewrite inspired by cazier/clonenames.",
+  "type": "module",
+  "main": "server/index.js",
+  "license": "GPL-3.0-or-later",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "NODE_ENV=development node --watch server/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

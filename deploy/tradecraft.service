@@ -1,0 +1,23 @@
+# systemd unit for running Tradecraft without Docker.
+#   sudo cp deploy/tradecraft.service /etc/systemd/system/
+#   sudo systemctl enable --now tradecraft
+
+[Unit]
+Description=Tradecraft word game
+After=network.target
+
+[Service]
+Type=simple
+User=tradecraft
+WorkingDirectory=/opt/tradecraft
+ExecStart=/usr/bin/node server/index.js
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=DATA_DIR=/var/lib/tradecraft
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/tradecraft
+
+[Install]
+WantedBy=multi-user.target

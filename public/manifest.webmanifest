@@ -1,0 +1,11 @@
+{
+  "name": "Tradecraft",
+  "short_name": "Tradecraft",
+  "description": "A word game of one-word clues for two to four teams.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#0f2029",
+  "theme_color": "#0f2029",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
