@@ -384,7 +384,17 @@ button.player:hover { outline: 1.5px solid var(--ink); }
   background: linear-gradient(90deg, var(--k1) 0 50%, var(--k2) 50% 100%) bottom / 100% max(6px, 17cqh) no-repeat, var(--paper);
   color: var(--card-ink);
 }
-.is-keyview .card[data-kind] .card-word { opacity: 0.6; }
+/* Key view while the round is on: cards that have already been revealed sink
+   into a dark shade of their colour with the word barely showing, so the
+   spymaster's eye goes straight to what is still face-down. */
+.is-keyview .card[data-kind] {
+  --spent: color-mix(in srgb, var(--team) 38%, #0b1013);
+  color: color-mix(in srgb, var(--team) 60%, #0b1013);
+  box-shadow: 0 max(1px, 1.5cqh) 0 color-mix(in srgb, var(--team) 22%, #000);
+}
+.is-keyview .card[data-kind]::before { background: var(--spent); }
+.is-keyview .card[data-kind] .card-word { opacity: 1; }
+.is-keyview .card[data-kind='assassin'] { --spent: #232327; color: #3a3a40; }
 
 .card.is-tried { opacity: 0.5; }
 .card.is-pointed { outline: 3px solid var(--card-ink); outline-offset: -3px; }
