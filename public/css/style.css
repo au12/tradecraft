@@ -238,6 +238,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
 .seat-label { font-size: 0.82rem; font-weight: 650; color: var(--muted); margin-bottom: 4px; }
 .seat-list { display: flex; flex-wrap: wrap; gap: 5px; }
 .seat-empty { color: var(--muted); font-size: 0.92rem; }
+.seat-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.seat-actions .btn { flex: 1 1 auto; }
 .team-foot { display: flex; justify-content: space-between; gap: 8px; padding: 0 14px 10px; font-size: 0.85rem; color: var(--muted); }
 
 .player {

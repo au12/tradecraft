@@ -43,6 +43,18 @@ function defaultSettings() {
 }
 
 const live = (room) => Boolean(room.round && room.round.phase !== 'over');
+const inTeamOrder = (list) => game.TEAM_IDS.filter((t) => list.includes(t));
+
+/**
+ * Which of the player's teams is acting right now. A player may sit on more
+ * than one team (same role on each); only one of those teams can be up at a
+ * time, so this picks it. Falls back to their first team so the rules engine
+ * can explain why it isn't their turn.
+ */
+function actingTeam(r, me) {
+  const up = r.phase === 'clue' ? [game.currentTeam(r)] : game.guessingTeams(r);
+  return up.find((t) => me.teams.includes(t)) ?? me.teams[0] ?? null;
+}
 
 export function activeTeamIds(room) {
   return game.TEAM_IDS.slice(0, room.settings.mode === 'coop' ? 2 : room.settings.teamCount);
@@ -111,7 +123,7 @@ export class Rooms {
       }
       // Forget long-gone spectators so the player list stays tidy.
       for (const p of room.players.values()) {
-        if (!p.online && p.id !== room.hostId && now() - p.seenAt > (p.team ? 6 : 1) * 3600_000) room.players.delete(p.id);
+        if (!p.online && p.id !== room.hostId && now() - p.seenAt > (p.teams.length ? 6 : 1) * 3600_000) room.players.delete(p.id);
       }
     }
     this.scheduleSave();
@@ -132,7 +144,7 @@ export class Rooms {
         id: newId(),
         token,
         name: this.freeName(room, nick),
-        team: null,
+        teams: [],
         role: 'spectator',
         online: false,
         sockets: new Set(),
@@ -213,7 +225,8 @@ export class Rooms {
     let round = null;
     if (r) {
       const over = r.phase === 'over';
-      const onBoard = r.order.includes(me.team);
+      const side = me.teams.find((t) => r.order.includes(t)); // co-op: one side only
+      const onBoard = Boolean(side);
       const seesClassicKey = r.mode === 'classic' && (over || (me.role === 'spymaster' && onBoard));
       const cards = r.cards.map((c, i) => {
         const v = { w: c.word, r: null };
@@ -230,7 +243,7 @@ export class Rooms {
           }
           if (c.miss.length) v.x = c.miss;
           if (over) v.ks = c.keys;
-          else if (onBoard) v.k = c.keys[me.team];
+          else if (onBoard) v.k = c.keys[side];
         }
         if (r.marks[i]) v.m = r.marks[i];
         return v;
@@ -280,13 +293,10 @@ export class Rooms {
       cardsNeeded: cardsNeeded(s),
       teams: room.teams.filter((t) => active.includes(t.id)),
       coop: room.coop,
-      players: [...room.players.values()].map((p) => ({
-        id: p.id,
-        name: p.name,
-        team: active.includes(p.team) ? p.team : null,
-        role: active.includes(p.team) ? p.role : 'spectator',
-        online: p.online,
-      })),
+      players: [...room.players.values()].map((p) => {
+        const teams = p.teams.filter((t) => active.includes(t));
+        return { id: p.id, name: p.name, teams, role: teams.length ? p.role : 'spectator', online: p.online };
+      }),
       round,
     };
   }
@@ -347,10 +357,17 @@ export class Rooms {
 
   // ───────────────────────── seats ─────────────────────────
 
-  seat(room, player, team, role, { force = false } = {}) {
+  /**
+   * Puts a player in a seat. By default this moves them (they leave any other
+   * team). With `also`, they keep their current seats and add this team too,
+   * which is only allowed in the role they already have: a spymaster can run
+   * several teams, an operative can guess for several, but nobody can be a
+   * spymaster on one team and an operative on another.
+   */
+  seat(room, player, team, role, { force = false, also = false } = {}) {
     const r = room.round;
     if (team === null) {
-      player.team = null;
+      player.teams = [];
       player.role = 'spectator';
       if (r) game.removeMarksOf(r, player.id);
       return null;
@@ -358,7 +375,20 @@ export class Rooms {
     if (!activeTeamIds(room).includes(team)) return 'That team is not in this game.';
     const coop = room.settings.mode === 'coop';
     const wanted = coop ? 'operative' : role === 'spymaster' ? 'spymaster' : 'operative';
-    if (player.team === team && player.role === wanted) return null;
+    const teamName = room.teams.find((t) => t.id === team).name;
+    const adding = also && player.teams.length > 0;
+
+    if (adding) {
+      if (coop) return 'In co-op you can only be on one side, because each side has its own key.';
+      if (wanted !== player.role) {
+        return player.role === 'spymaster'
+          ? 'You’ve seen the key, so you can only add yourself as a spymaster on another team.'
+          : 'You can only add yourself as an operative on another team. To be a spymaster, move instead.';
+      }
+      if (player.teams.includes(team)) return null;
+    } else if (player.teams.length === 1 && player.teams[0] === team && player.role === wanted) {
+      return null;
+    }
 
     if (live(room) && !force) {
       if (coop && player.sawKey && player.sawKey !== `${r.id}:${team}`) {
@@ -369,26 +399,37 @@ export class Rooms {
       }
     }
     if (wanted === 'spymaster') {
-      const holder = [...room.players.values()].find((p) => p.team === team && p.role === 'spymaster' && p.id !== player.id);
+      const holder = [...room.players.values()].find((p) => p.id !== player.id && p.role === 'spymaster' && p.teams.includes(team));
       if (holder) {
         const gone = !holder.online && now() - holder.seenAt > SEAT_TAKEOVER_MS;
-        if (!force && !gone) return `${holder.name} is already the spymaster.`;
-        if (force && !live(room)) {
+        if (!force && !gone) return `${holder.name} is already ${teamName}’s spymaster.`;
+        if (holder.teams.length > 1) {
+          // They keep running their other teams.
+          holder.teams = holder.teams.filter((t) => t !== team);
+        } else if (force && !live(room)) {
           holder.role = 'operative';
         } else {
           // Mid-round they already know the key, so they sit the rest out.
-          holder.team = null;
+          holder.teams = [];
           holder.role = 'spectator';
         }
       }
     }
     if (r) game.removeMarksOf(r, player.id);
-    player.team = team;
+    player.teams = adding ? inTeamOrder([...player.teams, team]) : [team];
     player.role = wanted;
     if (live(room)) {
       if (coop) player.sawKey = `${r.id}:${team}`;
       else if (wanted === 'spymaster') player.sawKey = r.id;
     }
+    return null;
+  }
+
+  leaveTeam(room, player, team) {
+    if (!player.teams.includes(team)) return 'You are not on that team.';
+    player.teams = player.teams.filter((t) => t !== team);
+    if (player.teams.length === 0) player.role = 'spectator';
+    if (room.round) game.removeMarksOf(room.round, player.id);
     return null;
   }
 
@@ -402,11 +443,11 @@ export class Rooms {
     if (pool.length < teams.length) return 'Not enough players online to fill the teams.';
     const offset = randomInt(teams.length);
     for (const p of room.players.values()) {
-      p.team = null;
+      p.teams = [];
       p.role = 'spectator';
     }
     pool.forEach((p, i) => {
-      p.team = teams[(i + offset) % teams.length];
+      p.teams = [teams[(i + offset) % teams.length]];
       p.role = !coop && i < teams.length ? 'spymaster' : 'operative';
     });
     return null;
@@ -420,7 +461,7 @@ export class Rooms {
     }
     const s = room.settings;
     const teams = activeTeamIds(room);
-    const members = (team, role) => [...room.players.values()].filter((p) => p.team === team && (!role || p.role === role));
+    const members = (team, role) => [...room.players.values()].filter((p) => p.teams.includes(team) && (!role || p.role === role));
     for (const team of teams) {
       const name = room.teams.find((t) => t.id === team).name;
       if (s.mode === 'coop') {
@@ -459,8 +500,9 @@ export class Rooms {
 
     for (const p of room.players.values()) {
       p.sawKey = null;
-      if (!teams.includes(p.team)) continue;
-      if (s.mode === 'coop') p.sawKey = `${room.round.id}:${p.team}`;
+      const mine = p.teams.filter((t) => teams.includes(t));
+      if (mine.length === 0) continue;
+      if (s.mode === 'coop') p.sawKey = `${room.round.id}:${mine[0]}`;
       else if (p.role === 'spymaster') {
         p.sawKey = room.round.id;
         p.spyRounds += 1;
@@ -525,12 +567,13 @@ export class Rooms {
       room.round = null;
       const active = activeTeamIds(room);
       for (const p of room.players.values()) {
-        if (!active.includes(p.team)) {
-          p.team = null;
-          p.role = 'spectator';
-        } else if (next.mode !== s.mode) {
+        p.teams = p.teams.filter((t) => active.includes(t));
+        if (next.mode !== s.mode) {
+          // Co-op is one side per person; classic starts everyone as an operative.
+          if (next.mode === 'coop') p.teams = p.teams.slice(0, 1);
           p.role = 'operative';
         }
+        if (p.teams.length === 0) p.role = 'spectator';
       }
     }
     if (timersChanged && room.round) room.round.timerKey = null;
@@ -555,7 +598,10 @@ export class Rooms {
         break;
       }
       case 'join':
-        err = this.seat(room, me, String(msg.team), msg.role);
+        err = this.seat(room, me, String(msg.team), msg.role, { also: Boolean(msg.also) });
+        break;
+      case 'leave':
+        err = this.leaveTeam(room, me, String(msg.team));
         break;
       case 'spectate':
         err = this.seat(room, me, null);
@@ -565,7 +611,7 @@ export class Rooms {
         if (!r) return 'The game has not started.';
         const coop = r.mode === 'coop';
         if (!coop && me.role !== 'spymaster') return 'Only the spymaster gives clues.';
-        const res = game.giveClue(r, me.team, { word: msg.word, count: msg.count }, me.name, {
+        const res = game.giveClue(r, actingTeam(r, me), { word: msg.word, count: msg.count }, me.name, {
           strict: room.settings.strictClues,
         });
         if (!res.ok) return res.error;
@@ -577,14 +623,15 @@ export class Rooms {
         if (r.mode === 'classic' && me.role !== 'operative') return 'Spymasters don’t guess.';
         const index = Number(msg.i);
         if (!Number.isInteger(index)) return 'No such card.';
-        const res = msg.a === 'mark' ? game.toggleMark(r, me.team, index, me.id) : game.guess(r, me.team, index, me.name);
+        const team = actingTeam(r, me);
+        const res = msg.a === 'mark' ? game.toggleMark(r, team, index, me.id) : game.guess(r, team, index, me.name);
         if (!res.ok) return res.error;
         break;
       }
       case 'endGuess': {
         if (!r) return 'The game has not started.';
         if (r.mode === 'classic' && me.role !== 'operative') return 'Only operatives can end the guessing.';
-        const res = game.endGuessing(r, me.team, me.name);
+        const res = game.endGuessing(r, actingTeam(r, me), me.name);
         if (!res.ok) return res.error;
         break;
       }
@@ -740,7 +787,13 @@ export class Rooms {
       const room = {
         ...saved,
         settings: { ...defaultSettings(), ...saved.settings },
-        players: new Map(saved.players.map((p) => [p.id, { ...p, online: false, sockets: new Set() }])),
+        players: new Map(
+          saved.players.map(({ team, ...p }) => [
+            p.id,
+            // Older saves stored a single `team`.
+            { ...p, teams: p.teams ?? (team ? [team] : []), online: false, sockets: new Set() },
+          ]),
+        ),
       };
       room.settings.packs = room.settings.packs.filter((id) => getPack(id));
       room.poolSize = wordPool(room.settings).length;

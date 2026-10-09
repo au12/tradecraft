@@ -17,6 +17,7 @@ Tradecraft is a ground-up rewrite of [cazier/clonenames](https://github.com/cazi
 - Classic mode for 2, 3 or 4 teams. The server runs the rules: clue then guesses, number + 1 guess limit, wrong card ends the turn, assassin, win detection, and elimination when three or four teams play.
 - Co-op mode: two sides, one board, two different keys, 15 agents to find in a limited number of turns, then sudden death.
 - Boards from 4 × 4 to 10 × 10, 0 to 3 assassins.
+- Short on players? One person can sit on more than one team in the same role: a spymaster can run two teams, an operative can guess for two. Nobody can be a spymaster on one team and an operative on another.
 - Spymasters type a clue and a number (0 to 9 or ∞). Clues that are a face-down word are rejected; a stricter check is optional.
 - Operatives tap a card to point at it. Everyone sees who is pointing where, then one press on Reveal commits.
 - Optional clue timer and guess timer. The host can pause or add 30 seconds.
@@ -64,6 +65,33 @@ docker run -d --name tradecraft -p 3000:3000 -v "$PWD/data:/data" --restart unle
 ```
 
 The container runs as uid 1000. If the folder you mount is owned by someone else, add `--user <uid>:<gid>` (on Unraid that is `--user 99:100`). If the app can't write to `/data` it still runs; it just logs a warning and rooms won't survive a restart.
+
+### Unraid
+
+The repository includes a GitHub Actions workflow ([`.github/workflows/docker.yml`](.github/workflows/docker.yml)) that builds the image and publishes it to `ghcr.io/<your-username>/<repo-name>:latest` on every push, so nothing has to be built on the server.
+
+1. Push this project to your own GitHub repository and wait for the **Build image** run on the Actions tab to go green.
+2. Make the package public once: your GitHub profile, **Packages**, the package, **Package settings**, **Change visibility**.
+3. In the Unraid terminal, create the data folder with Unraid's usual owner:
+
+   ```sh
+   mkdir -p /mnt/user/appdata/tradecraft/wordlists
+   chown -R 99:100 /mnt/user/appdata/tradecraft
+   ```
+
+4. Docker tab, **Add Container**, with Advanced View switched on:
+
+   | Field | Value |
+   | --- | --- |
+   | Name | `tradecraft` |
+   | Repository | `ghcr.io/<your-username>/<repo-name>:latest` (all lower case) |
+   | Network Type | Bridge |
+   | WebUI | `http://[IP]:[PORT:3000]` |
+   | Extra Parameters | `--user 99:100` |
+   | Port | container `3000`, host `3000` (or any free port) |
+   | Path | container `/data`, host `/mnt/user/appdata/tradecraft` |
+
+To update later, push your changes, let the workflow finish, then use **Check for Updates** on the Docker tab.
 
 ### Node, no container
 

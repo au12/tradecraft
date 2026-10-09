@@ -16,10 +16,13 @@ function activeTeams(round) {
 /** True when the viewer personally has something to do right now. */
 export function myMove(state, me) {
   const r = state.round;
-  if (!r || r.phase === 'over' || !me.team) return false;
-  if (r.mode === 'coop') return r.phase === 'clue' ? r.turn === me.team && !r.sudden : r.guessing.includes(me.team);
-  if (r.phase === 'clue') return r.turn === me.team && me.role === 'spymaster';
-  return r.guessing.includes(me.team) && me.role === 'operative';
+  if (!r || r.phase === 'over' || !me.teams.length) return false;
+  if (r.mode === 'coop') {
+    const side = me.teams[0];
+    return r.phase === 'clue' ? r.turn === side && !r.sudden : r.guessing.includes(side);
+  }
+  if (r.phase === 'clue') return me.teams.includes(r.turn) && me.role === 'spymaster';
+  return r.guessing.some((t) => me.teams.includes(t)) && me.role === 'operative';
 }
 
 /** What still has to happen before the host can start. */
@@ -27,7 +30,7 @@ export function startProblems(state) {
   const problems = [];
   const coop = state.settings.mode === 'coop';
   for (const team of state.teams) {
-    const members = state.players.filter((p) => p.team === team.id);
+    const members = state.players.filter((p) => p.teams.includes(team.id));
     if (coop) {
       if (members.length === 0) problems.push(`${team.name} needs a player`);
     } else {
@@ -54,37 +57,48 @@ function playerChip(state, me, p) {
 function teamPanel(state, me, team) {
   const r = state.round;
   const coop = state.settings.mode === 'coop';
-  const members = state.players.filter((p) => p.team === team.id);
+  const members = state.players.filter((p) => p.teams.includes(team.id));
   const chips = (list) => list.map((p) => playerChip(state, me, p)).join('');
   const turn = activeTeams(r).includes(team.id);
   const out = r?.eliminated?.includes(team.id);
-  const joinBtn = (role, label) =>
-    `<button type="button" class="btn btn-small" data-act="join" data-team="${team.id}" data-role="${role}">${label}</button>`;
+  const mine = me.teams.includes(team.id);
+  const btn = (act, role, label, title = '') =>
+    `<button type="button" class="btn btn-small" data-act="${act}" data-team="${team.id}" data-role="${role}"${title ? ` title="${esc(title)}"` : ''}>${label}</button>`;
+  // Someone already seated in this role elsewhere can either move here or
+  // take this team on as well. Mixing roles across teams is not allowed.
+  const joinButtons = (role, label) =>
+    me.teams.length && !mine && me.role === role
+      ? `<div class="seat-actions">
+          ${btn('join', role, 'Move here', 'Leave your current team and join this one')}
+          ${btn('join-also', role, 'Also join', 'Stay where you are and play for this team too')}
+        </div>`
+      : btn('join', role, label);
+  const leave = mine && me.teams.length > 1 ? btn('leave', '', `Leave ${esc(team.name)}`) : '';
 
   let body;
   if (coop) {
-    const mineHere = me.team === team.id;
     body = `<div>
         <div class="seat-label">Players</div>
         <div class="seat-list">${chips(members) || '<span class="seat-empty">Nobody yet</span>'}</div>
       </div>
-      ${mineHere ? '' : joinBtn('operative', `Join ${esc(team.name)}`)}`;
+      ${mine ? '' : btn('join', 'operative', `Join ${esc(team.name)}`)}`;
   } else {
     const spies = members.filter((p) => p.role === 'spymaster');
     const ops = members.filter((p) => p.role !== 'spymaster');
-    const iAmSpy = me.team === team.id && me.role === 'spymaster';
-    const iAmOp = me.team === team.id && me.role === 'operative';
+    const iAmSpy = mine && me.role === 'spymaster';
+    const iAmOp = mine && me.role === 'operative';
     const seatFree = spies.length === 0 || spies.every((p) => !p.online);
     body = `<div>
         <div class="seat-label">Spymaster</div>
         <div class="seat-list">${chips(spies) || '<span class="seat-empty">Open seat</span>'}</div>
       </div>
-      ${!iAmSpy && seatFree ? joinBtn('spymaster', 'Join as spymaster') : ''}
+      ${!iAmSpy && seatFree ? joinButtons('spymaster', 'Join as spymaster') : ''}
       <div>
         <div class="seat-label">Operatives</div>
         <div class="seat-list">${chips(ops) || '<span class="seat-empty">Nobody yet</span>'}</div>
       </div>
-      ${iAmOp ? '' : joinBtn('operative', 'Join as operative')}`;
+      ${iAmOp ? '' : joinButtons('operative', 'Join as operative')}
+      ${leave}`;
   }
 
   const count = !coop && r ? `<span class="team-count" title="Cards left to find">${r.remaining[team.id] ?? ''}</span>` : '';
@@ -97,11 +111,11 @@ function teamPanel(state, me, team) {
 }
 
 function spectatorsPanel(state, me) {
-  const watching = state.players.filter((p) => !p.team);
+  const watching = state.players.filter((p) => !p.teams.length);
   return `<section class="side">
       <h2>Spectators</h2>
       <div class="seat-list">${watching.map((p) => playerChip(state, me, p)).join('') || '<span class="seat-empty">Nobody is just watching</span>'}</div>
-      ${me.team ? '<button type="button" class="btn btn-small" data-act="spectate">Watch instead</button>' : ''}
+      ${me.teams.length ? '<button type="button" class="btn btn-small" data-act="spectate">Watch instead</button>' : ''}
     </section>`;
 }
 
@@ -221,7 +235,7 @@ function statusModel(state, me) {
       };
     }
     return {
-      title: me.team ? `Waiting for ${hostName} to start` : 'Pick a team to join',
+      title: me.teams.length ? `Waiting for ${hostName} to start` : 'Pick a team to join',
       sub: waiting,
     };
   }
@@ -271,7 +285,7 @@ function statusModel(state, me) {
     if (r.phase === 'clue') {
       const other = name(r.order.find((t) => t !== r.turn));
       if (mine) return { team: r.turn, form: true, title: `Give ${other} a clue`, sub: 'Point them at the green cards on your key.' };
-      return { team: r.turn, title: `${name(r.turn)} is thinking of a clue`, sub: me.team ? 'Your key stays secret. No hints.' : '' };
+      return { team: r.turn, title: `${name(r.turn)} is thinking of a clue`, sub: me.teams.length ? 'Your key stays secret. No hints.' : '' };
     }
     return {
       team: r.guessing[0],
@@ -287,24 +301,26 @@ function statusModel(state, me) {
       return {
         team: r.turn,
         form: true,
-        title: 'Give your team a clue',
+        title: me.teams.length > 1 ? `Give ${name(r.turn)} a clue` : 'Give your team a clue',
         sub: `One word, then how many cards it points to. ${plural(r.remaining[r.turn], 'card')} left to find.`,
       };
     }
-    const spy = state.players.find((p) => p.team === r.turn && p.role === 'spymaster');
+    const spy = state.players.find((p) => p.teams.includes(r.turn) && p.role === 'spymaster');
     if (!spy) {
       return { team: r.turn, title: `${name(r.turn)} needs a spymaster`, sub: 'The seat is open. Someone on the team can take it, or the host can assign it.' };
     }
     return {
       team: r.turn,
       title: `${spy.name} is thinking of a clue`,
-      sub: me.team === r.turn ? 'Your team is up next.' : `${name(r.turn)}’s turn.`,
+      sub: me.teams.includes(r.turn) ? `${me.teams.length > 1 ? name(r.turn) : 'Your team'} is up next.` : `${name(r.turn)}’s turn.`,
     };
   }
   return {
     team: r.turn,
     html: clueBlock(r),
-    sub: mine ? `${guessesText(r)}. Tap a card to point at it, then Reveal.` : `${name(r.turn)} is guessing. ${guessesText(r)}.`,
+    sub: mine
+      ? `${me.teams.length > 1 ? `Guessing for ${name(r.turn)}. ` : ''}${guessesText(r)}. Tap a card to point at it, then Reveal.`
+      : `${name(r.turn)} is guessing. ${guessesText(r)}.`,
     actions: mine ? '<button type="button" class="btn" data-act="end-guess">End guessing</button>' : '',
   };
 }

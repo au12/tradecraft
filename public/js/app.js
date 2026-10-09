@@ -255,7 +255,7 @@ function effects(prev, next) {
 
   if (b.phase === 'over' && a.phase !== 'over') {
     if (b.reason === 'abandoned') return;
-    const won = b.mode === 'coop' ? b.outcome === 'win' : !me.team || b.winner === me.team;
+    const won = b.mode === 'coop' ? b.outcome === 'win' : !me.teams.length || me.teams.includes(b.winner);
     setTimeout(() => play(won ? 'win' : 'lose'), sound ? 650 : 0);
     return;
   }
@@ -448,7 +448,7 @@ function renderPlayerDialog(id) {
   $('#player-title').textContent = p.name;
   const coop = state.settings.mode === 'coop';
   const move = (team, role, label) =>
-    p.team === team && (coop || p.role === role)
+    p.teams.length === 1 && p.teams[0] === team && (coop || p.role === role)
       ? ''
       : `<button type="button" class="btn" data-act="move" data-team="${team ?? ''}" data-role="${role}">${label}</button>`;
   const rows = state.teams
@@ -460,7 +460,7 @@ function renderPlayerDialog(id) {
     .join('');
   $('#player-body').innerHTML = `<div class="player-actions">
       ${rows}
-      ${p.team ? '<button type="button" class="btn" data-act="move" data-team="" data-role="">Make spectator</button>' : ''}
+      ${p.teams.length ? '<button type="button" class="btn" data-act="move" data-team="" data-role="">Make spectator</button>' : ''}
       ${p.id !== state.hostId ? '<button type="button" class="btn" data-act="give-host">Make host</button>' : ''}
       ${p.id !== me.id ? '<button type="button" class="btn btn-danger" data-act="kick">Remove from room</button>' : ''}
     </div>`;
@@ -516,6 +516,10 @@ function bindGlobal() {
         return askName({ rename: true });
       case 'join':
         return send('join', { team: el.dataset.team, role: el.dataset.role });
+      case 'join-also':
+        return send('join', { team: el.dataset.team, role: el.dataset.role, also: true });
+      case 'leave':
+        return send('leave', { team: el.dataset.team });
       case 'spectate':
         return send('spectate');
       case 'start':

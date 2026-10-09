@@ -84,7 +84,10 @@ export function renderBoard(state, me) {
 
   const over = round.phase === 'over';
   const coop = round.mode === 'coop';
-  const canGuess = round.phase === 'guess' && round.guessing.includes(me.team) && (coop || me.role === 'operative');
+  const side = me.teams[0]; // co-op: one side per person
+  const canGuess =
+    round.phase === 'guess' &&
+    (coop ? round.guessing.includes(side) : me.role === 'operative' && round.guessing.some((t) => me.teams.includes(t)));
   const keyView = !over && round.cards.some((c) => c.k !== undefined);
   board.className = `board${round.cols > 7 ? ' is-large' : ''}${keyView ? ' is-keyview' : ''}`;
   const names = new Map(state.players.map((p) => [p.id, p.name]));
@@ -93,7 +96,7 @@ export function renderBoard(state, me) {
   round.cards.forEach((c, i) => {
     const cell = board.children[i];
     const card = cell.firstElementChild;
-    const tried = coop && !c.r && c.x?.includes(me.team);
+    const tried = coop && !c.r && c.x?.includes(side);
     const pickable = canGuess && !c.r && !tried;
     const mine = Boolean(c.m?.includes(me.id));
 

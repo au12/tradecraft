@@ -83,7 +83,7 @@ async function classicTable() {
   await bo.do('join', { team: 'red', role: 'operative' });
   await cy.do('join', { team: 'blue', role: 'spymaster' });
   await dee.do('join', { team: 'blue', role: 'operative' });
-  await ana.until((x) => x.state.players.filter((p) => p.team).length === 4, 'everyone seated');
+  await ana.until((x) => x.state.players.filter((p) => p.teams.length).length === 4, 'everyone seated');
   return { code, ana, bo, cy, dee, all: [ana, bo, cy, dee] };
 }
 
@@ -190,7 +190,7 @@ test('classic game: wrong card passes the turn, assassin ends it, wins are count
   assert.equal(ana.state.roundNo, 2);
   assert.equal(ana.state.round.turn, second, 'starting team rotates');
   assert.ok(ana.state.round.cards.every((c) => !oldWords.has(c.w)));
-  const seated = ana.state.players.filter((p) => p.team);
+  const seated = ana.state.players.filter((p) => p.teams.length);
   assert.equal(seated.length, 4);
   assert.equal(seated.filter((p) => p.role === 'spymaster').length, 2);
   for (const c of t.all) c.ws.close();
@@ -225,7 +225,7 @@ test('host tools: settings, timers, kick, reconnect', async () => {
   await ana.until((x) => x.state.players.find((p) => p.name === 'Dee')?.online === false, 'Dee offline');
   const dee2 = client(t.code, 'Dee', dee.token);
   await dee2.ready();
-  assert.equal(dee2.me().team, 'blue');
+  assert.deepEqual(dee2.me().teams, ['blue']);
   assert.equal(dee2.me().role, 'operative');
 
   // Kicked players cannot come back with the same token.
@@ -255,7 +255,7 @@ test('co-op: each side sees only its own key and they can win together', async (
   await ana.do('settings', { patch: { mode: 'coop' } });
   await ana.do('join', { team: 'red' });
   await bo.do('join', { team: 'blue' });
-  await ana.until((x) => x.state.players.filter((p) => p.team).length === 2);
+  await ana.until((x) => x.state.players.filter((p) => p.teams.length).length === 2);
   await ana.do('start');
   await Promise.all([ana, bo, eve].map((c) => c.until((x) => x.state.round, 'round')));
 
@@ -293,4 +293,65 @@ test('co-op: each side sees only its own key and they can win together', async (
   await eve.until((x) => x.state.round.phase === 'over');
   assert.ok(eve.state.round.cards.filter((c) => !c.r).every((c) => c.ks), 'both keys are shown at the end');
   for (const c of [ana, bo, eve]) c.ws.close();
+});
+
+test('a player can sit on several teams, but only in one role', async () => {
+  const code = await createRoom();
+  const ana = client(code, 'Ana');
+  await ana.ready();
+  const [bo, cy] = ['Bo', 'Cy'].map((n) => client(code, n));
+  await Promise.all([bo.ready(), cy.ready()]);
+
+  // Three people: Ana runs both teams, Bo guesses for red, Cy for blue.
+  assert.equal(await ana.do('join', { team: 'red', role: 'spymaster' }), null);
+  assert.equal(await ana.do('join', { team: 'blue', role: 'spymaster', also: true }), null);
+  assert.deepEqual(ana.me().teams, ['red', 'blue']);
+  assert.equal(ana.me().role, 'spymaster');
+  assert.match(await ana.do('join', { team: 'blue', role: 'operative', also: true }), /only add yourself as a spymaster/);
+
+  assert.equal(await bo.do('join', { team: 'red', role: 'operative' }), null);
+  assert.match(await bo.do('join', { team: 'blue', role: 'spymaster', also: true }), /only add yourself as an operative/);
+  assert.match(await bo.do('join', { team: 'blue', role: 'spymaster' }), /already Blue’s spymaster/);
+  assert.equal(await cy.do('join', { team: 'blue', role: 'operative' }), null);
+
+  assert.equal(await ana.do('start'), null);
+  await Promise.all([ana, bo, cy].map((c) => c.until((x) => x.state.round, 'round')));
+  const first = ana.state.round.turn;
+  const second = first === 'red' ? 'blue' : 'red';
+  const ops = { red: bo, blue: cy };
+
+  // The shared spymaster clues for whichever team is up.
+  assert.equal(await ana.do('clue', { word: 'first', count: 1 }), null);
+  assert.equal(ana.state.round.clue.team, first);
+  await ops[first].until((x) => x.state.round.phase === 'guess');
+  assert.equal(await ops[first].do('endGuess'), null);
+  await ana.until((x) => x.state.round.turn === second && x.state.round.phase === 'clue');
+  assert.equal(await ana.do('clue', { word: 'second', count: 1 }), null);
+  assert.equal(ana.state.round.clue.team, second);
+
+  // An operative can take on a second team mid-round and guess for it.
+  const other = ops[second];
+  assert.equal(await ops[first].do('join', { team: second, role: 'operative', also: true }), null);
+  const key = ana.state.round.cards.map((c) => c.k);
+  const target = key.findIndex((k, i) => k === second && !ana.state.round.cards[i].r);
+  assert.equal(await ops[first].do('guess', { i: target }), null);
+  await other.until((x) => x.state.round.cards[target].r === second, 'reveal for the second team');
+
+  // A spymaster still can't become an operative this round.
+  assert.match(await ana.do('join', { team: 'red', role: 'operative' }), /seen the key/);
+
+  // Leaving one team keeps the other seat.
+  assert.equal(await ops[first].do('leave', { team: second }), null);
+  assert.deepEqual(ops[first].me().teams, [first]);
+  for (const c of [ana, bo, cy]) c.ws.close();
+});
+
+test('co-op keeps everyone to one side', async () => {
+  const code = await createRoom();
+  const ana = client(code, 'Ana');
+  await ana.ready();
+  await ana.do('settings', { patch: { mode: 'coop' } });
+  assert.equal(await ana.do('join', { team: 'red' }), null);
+  assert.match(await ana.do('join', { team: 'blue', also: true }), /only be on one side/);
+  ana.ws.close();
 });
