@@ -2,20 +2,19 @@
 
 A self-hosted, real-time word game of one-word clues for two to four teams, played in the browser. Create a room, share the link, split into teams.
 
-Tradecraft is a ground-up rewrite of [cazier/clonenames](https://github.com/cazier/clonenames). It keeps what made that project different (up to four teams, boards up to 10 × 10, plain-text word lists) and adds the things a full game needs: named players, spymaster and operative seats, clues, turn rules enforced by the server, timers, a game log, a co-op mode, reconnects, and a layout that works on a phone.
+Tradecraft is a ground-up rewrite of [cazier/clonenames](https://github.com/cazier/clonenames). It keeps what made that project different (up to four teams, boards up to 10 × 10, plain-text word lists) and adds the things a full game needs: named players, spymaster and operative seats, clues, turn rules enforced by the server, timers, a game log, reconnects, and a layout that works on a phone.
 
 ![Spymaster view](docs/spymaster.png)
 
-| Operative, pointing at a card | Four teams on 8 × 8, dark | Co-op | Phone |
+| Operative, pointing at a card | Four teams on 8 × 8, dark | Phone |
 | --- | --- | --- | --- |
-| ![](docs/operative.png) | ![](docs/four-teams-dark.png) | ![](docs/co-op.png) | ![](docs/mobile.png) |
+| ![](docs/operative.png) | ![](docs/four-teams-dark.png) | ![](docs/mobile.png) |
 
 ## What you get
 
 **The game**
 
-- Classic mode for 2, 3 or 4 teams. The server runs the rules: clue then guesses, number + 1 guess limit, wrong card ends the turn, assassin, win detection, and elimination when three or four teams play.
-- Co-op mode: two sides, one board, two different keys, 15 agents to find in a limited number of turns, then sudden death.
+- 2, 3 or 4 teams. The server runs the rules: clue then guesses, number + 1 guess limit, wrong card ends the turn, assassin, win detection, and elimination when three or four teams play.
 - Boards from 4 × 4 to 10 × 10, 0 to 3 assassins.
 - Short on players? One person can sit on more than one team in the same role: a spymaster can run two teams, an operative can guess for two. Nobody can be a spymaster on one team and an operative on another.
 - Spymasters type a clue and a number (0 to 9 or ∞). Clues that are a face-down word are rejected; a stricter check is optional.
@@ -201,7 +200,6 @@ npm test        # rules tests + end-to-end tests that boot the server
 | Turn handling | Manual "End turn" button | Automatic, with optional timers |
 | Winning | Players work it out | Detected, announced, counted across rounds |
 | Key secrecy | Sent to anyone who ticks "host" | Sent only to spymasters, checked on the server |
-| Modes | Team play | Team play and co-op |
 | Teams and board | Up to 4 teams, up to 10 × 10 | Same, plus 4 × 4 and 0 to 3 assassins |
 | Word lists | Files on the server | Files on the server, plus per-room custom words and pack mixing |
 | Reconnect / restart | Game is lost | Seats and rooms are restored |

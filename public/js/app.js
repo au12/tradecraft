@@ -245,17 +245,15 @@ function effects(prev, next) {
     const before = a.cards[i];
     if (c.r && !before.r) {
       if (c.r === 'assassin') sound = 'assassin';
-      else if (c.r === 'agent' || c.r === c.by) sound = sound ?? 'good';
+      else if (c.r === c.by) sound = sound ?? 'good';
       else sound = sound ?? (c.r === 'neutral' ? 'miss' : 'bad');
-    } else if ((c.x?.length ?? 0) > (before.x?.length ?? 0)) {
-      sound = sound ?? 'miss';
     }
   });
   if (sound) play(sound);
 
   if (b.phase === 'over' && a.phase !== 'over') {
     if (b.reason === 'abandoned') return;
-    const won = b.mode === 'coop' ? b.outcome === 'win' : !me.teams.length || me.teams.includes(b.winner);
+    const won = !me.teams.length || me.teams.includes(b.winner);
     setTimeout(() => play(won ? 'win' : 'lose'), sound ? 650 : 0);
     return;
   }
@@ -318,7 +316,6 @@ function renderSettings() {
 
   const off = !isHost;
   const locked = off || live;
-  const coop = s.mode === 'coop';
   const hostName = state.players.find((p) => p.id === state.hostId)?.name ?? 'the host';
   const sizes = [4, 5, 6, 7, 8, 9, 10].map((n) => [n, `${n} × ${n} (${n * n} cards)`]);
   const poolOk = state.poolSize >= state.cardsNeeded;
@@ -330,18 +327,11 @@ function renderSettings() {
     ${off ? `<p class="readonly-note">Only the host (${esc(hostName)}) can change these.</p>` : ''}
     <section class="set-group">
       <h3>Game</h3>
-      <div class="set-row"><div><label>Mode</label><small>${coop ? 'Two sides, two keys, one shared goal.' : 'Teams race to find their own agents.'}</small></div>
-        ${seg('mode', [['classic', 'Classic'], ['coop', 'Co-op']], s.mode, locked)}</div>
-      ${
-        coop
-          ? `<div class="set-row"><div><label>Turns</label><small>Fewer turns is harder. Nine is standard.</small></div>
-              ${select('coopTurns', [5, 6, 7, 8, 9, 10, 11, 12].map((n) => [n, `${n} turns`]), s.coopTurns, locked)}</div>`
-          : `<div class="set-row"><div><label>Teams</label></div>${seg('teamCount', [[2, '2'], [3, '3'], [4, '4']], s.teamCount, locked)}</div>
-             <div class="set-row"><div><label>Board</label></div>${select('cols', sizes, s.cols, locked)}</div>
-             <div class="set-row"><div><label>Assassins</label><small>With three or four teams, an assassin knocks one team out.</small></div>
-              ${seg('assassins', [[0, '0'], [1, '1'], [2, '2'], [3, '3']], s.assassins, locked)}</div>`
-      }
-      ${live && isHost ? '<p class="set-hint">End the round to change the mode, teams or board.</p>' : ''}
+      <div class="set-row"><div><label>Teams</label></div>${seg('teamCount', [[2, '2'], [3, '3'], [4, '4']], s.teamCount, locked)}</div>
+      <div class="set-row"><div><label>Board</label></div>${select('cols', sizes, s.cols, locked)}</div>
+      <div class="set-row"><div><label>Assassins</label><small>With three or four teams, an assassin knocks one team out.</small></div>
+        ${seg('assassins', [[0, '0'], [1, '1'], [2, '2'], [3, '3']], s.assassins, locked)}</div>
+      ${live && isHost ? '<p class="set-hint">End the round to change the teams or board.</p>' : ''}
     </section>
 
     <section class="set-group">
@@ -413,13 +403,9 @@ function onSettingsChange(event) {
   if (!state || me.id !== state.hostId) return;
   const patch = {};
   switch (el.name) {
-    case 'mode':
-      patch.mode = el.value;
-      break;
     case 'teamCount':
     case 'cols':
     case 'assassins':
-    case 'coopTurns':
     case 'clueSeconds':
     case 'guessSeconds':
       patch[el.name] = Number(el.value);
@@ -450,17 +436,12 @@ function renderPlayerDialog(id) {
   if (!p || me.id !== state.hostId) return dialog.open && dialog.close();
   dialog.dataset.id = id;
   $('#player-title').textContent = p.name;
-  const coop = state.settings.mode === 'coop';
   const move = (team, role, label) =>
-    p.teams.length === 1 && p.teams[0] === team && (coop || p.role === role)
+    p.teams.length === 1 && p.teams[0] === team && p.role === role
       ? ''
       : `<button type="button" class="btn" data-act="move" data-team="${team ?? ''}" data-role="${role}">${label}</button>`;
   const rows = state.teams
-    .map((t) =>
-      coop
-        ? move(t.id, 'operative', `Move to ${esc(t.name)}`)
-        : move(t.id, 'spymaster', `Make ${esc(t.name)} spymaster`) + move(t.id, 'operative', `Make ${esc(t.name)} operative`),
-    )
+    .map((t) => move(t.id, 'spymaster', `Make ${esc(t.name)} spymaster`) + move(t.id, 'operative', `Make ${esc(t.name)} operative`))
     .join('');
   $('#player-body').innerHTML = `<div class="player-actions">
       ${rows}

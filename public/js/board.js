@@ -4,7 +4,6 @@
 import { $, esc, icon, initials } from './util.js';
 
 const ROW_LABELS = 'ABCDEFGHIJ';
-const KEY_COLORS = { agent: 'var(--green)', neutral: 'var(--sand)', assassin: 'var(--black)' };
 
 /** Picks a width and size class so that long words still fit on one card. */
 function fitFor(word) {
@@ -36,7 +35,6 @@ function build(board, round) {
           <span class="card-marks"></span>
           <span class="card-word">${esc(c.w)}</span>
           <span class="card-shape"></span>
-          <span class="card-miss"></span>
         </button>
       </div>`;
     })
@@ -61,7 +59,7 @@ function setHtml(el, html) {
 
 const KIND_WORDS = {
   red: 'red agent', blue: 'blue agent', green: 'green agent', yellow: 'yellow agent',
-  agent: 'agent', neutral: 'bystander', assassin: 'assassin',
+  neutral: 'bystander', assassin: 'assassin',
 };
 
 export function renderBoard(state, me) {
@@ -69,7 +67,7 @@ export function renderBoard(state, me) {
   const round = state.round;
 
   if (!round) {
-    const cols = state.settings.mode === 'coop' ? 5 : state.settings.cols;
+    const cols = state.settings.cols;
     setAxes(cols, cols);
     board.className = `board ghost${cols > 7 ? ' is-large' : ''}`;
     if (board.dataset.round !== `ghost-${cols}`) {
@@ -83,38 +81,23 @@ export function renderBoard(state, me) {
   if (board.dataset.round !== round.id) build(board, round);
 
   const over = round.phase === 'over';
-  const coop = round.mode === 'coop';
-  const side = me.teams[0]; // co-op: one side per person
-  const canGuess =
-    round.phase === 'guess' &&
-    (coop ? round.guessing.includes(side) : me.role === 'operative' && round.guessing.some((t) => me.teams.includes(t)));
+  const canGuess = round.phase === 'guess' && me.role === 'operative' && round.guessing.some((t) => me.teams.includes(t));
   const keyView = !over && round.cards.some((c) => c.k !== undefined);
   board.className = `board${round.cols > 7 ? ' is-large' : ''}${keyView ? ' is-keyview' : ''}`;
   const names = new Map(state.players.map((p) => [p.id, p.name]));
-  const [sideA, sideB] = round.order.slice().sort((a, b) => state.teams.findIndex((t) => t.id === a) - state.teams.findIndex((t) => t.id === b));
 
   round.cards.forEach((c, i) => {
     const cell = board.children[i];
     const card = cell.firstElementChild;
-    const tried = coop && !c.r && c.x?.includes(side);
-    const pickable = canGuess && !c.r && !tried;
+    const pickable = canGuess && !c.r;
     const mine = Boolean(c.m?.includes(me.id));
 
     setAttr(card, 'data-kind', c.r);
-    let key = c.r ? null : c.k;
-    let twoKeys = false;
-    if (coop && over && !c.r && c.ks) {
-      twoKeys = true;
-      key = null;
-      card.style.setProperty('--k1', KEY_COLORS[c.ks[sideA]]);
-      card.style.setProperty('--k2', KEY_COLORS[c.ks[sideB]]);
-    }
+    const key = c.r ? null : c.k;
     setAttr(card, 'data-key', key);
-    setAttr(card, 'data-key2', twoKeys ? '1' : null);
 
     card.disabled = !pickable;
     card.classList.toggle('can-pick', pickable);
-    card.classList.toggle('is-tried', Boolean(tried) && !over);
     card.classList.toggle('is-pointed', Boolean(c.m?.length) && !c.r);
 
     setHtml(card.querySelector('.card-shape'), c.r ? icon(c.r) : key ? icon(key) : '');
@@ -122,7 +105,6 @@ export function renderBoard(state, me) {
       card.querySelector('.card-marks'),
       c.r ? '' : (c.m ?? []).map((id) => `<i title="${esc(names.get(id) ?? '')}">${esc(initials(names.get(id) ?? '?'))}</i>`).join(''),
     );
-    setHtml(card.querySelector('.card-miss'), c.r ? '' : (c.x ?? []).map((t) => `<i data-team="${t}"></i>`).join(''));
 
     let label = `${c.w}, ${coord(i, round.cols)}`;
     if (c.r) label += `, revealed: ${KIND_WORDS[c.r]}`;
