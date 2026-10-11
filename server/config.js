@@ -33,6 +33,9 @@ export const config = {
   persist: env.PERSIST !== 'false',
   // If set, people must enter this to create a room. Joining is never gated.
   createPassword: env.CREATE_PASSWORD || '',
+  // Which packs a new room starts with: "builtin" (every built-in pack),
+  // "all" (built-in plus your own lists), or a comma-separated list of ids.
+  defaultPacks: (env.DEFAULT_PACKS || 'builtin').trim(),
   roomTtlHours: int('ROOM_TTL_HOURS', 48, 1, 24 * 90),
   maxRooms: int('MAX_ROOMS', 500, 1, 100000),
   maxPlayers: int('MAX_PLAYERS_PER_ROOM', 64, 2, 256),

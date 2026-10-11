@@ -345,7 +345,11 @@ function renderSettings() {
     </section>
 
     <section class="set-group">
-      <h3>Words</h3>
+      <h3 class="set-head">Words${
+        isHost
+          ? `<span class="set-head-actions"><button type="button" class="link" data-act="packs-all">Tick all</button><button type="button" class="link" data-act="packs-none">Clear</button></span>`
+          : ''
+      }</h3>
       <div class="packs">
         ${packs
           .map(
@@ -539,6 +543,10 @@ function bindGlobal() {
         return send('lock', { on: !state.locked });
       case 'reset-scores':
         return window.confirm('Reset every team’s wins to zero?') && send('resetScores');
+      case 'packs-all':
+      case 'packs-none':
+        settingsSig = '';
+        return send('settings', { patch: { packs: el.dataset.act === 'packs-all' ? packs.map((p) => p.id) : [] } });
       case 'save-words':
         settingsSig = '';
         send('settings', { patch: { customWords: $('#custom-words').value } });

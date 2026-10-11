@@ -443,6 +443,9 @@ button.player:hover { outline: 1.5px solid var(--ink); }
 
 .set-group { display: grid; gap: 12px; }
 .set-group h3 { font-size: 1.05rem; font-weight: 800; padding-bottom: 6px; border-bottom: 1.5px solid var(--line); }
+.set-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.set-head-actions { display: flex; gap: 14px; font-size: 0.9rem; }
+.set-head-actions .link { font-weight: 600; }
 .set-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 14px; align-items: center; }
 .set-row > div > small, .set-hint { display: block; color: var(--muted); font-size: 0.88rem; font-weight: 400; }
 .set-row label { font-weight: 600; }
