@@ -35,7 +35,7 @@ Tradecraft is a ground-up rewrite of [cazier/clonenames](https://github.com/cazi
 
 **Words**
 
-- Ten built-in packs, about 1,700 words, with no word in more than one pack: Everyday, Arts & Games, Body & Motion, Food & Drink, Home & Wardrobe, Myth & History, People & Mischief, Places & Travel, Tools & Tech and Wild World. Pick any combination per room.
+- Ten built-in packs, about 1,700 words, with no word in more than one pack: Everyday, Arts & Games, Body & Motion, Food & Drink, Home & Wardrobe, Myth & History, People & Mischief, Places & Travel, Tools & Tech and Wild World. New rooms start with all of them ticked; the host can pick any combination.
 - Paste your own words into a room, or drop word-list files on the server.
 - Words aren't repeated from round to round until the pool runs out.
 
@@ -115,6 +115,7 @@ Everything is an environment variable. All are optional.
 | `SITE_NAME` | `Tradecraft` | The name shown on the page and in the browser tab. |
 | `BASE_PATH` | *(empty)* | Set to e.g. `/tradecraft` to serve under a sub-path. |
 | `CREATE_PASSWORD` | *(empty)* | If set, creating a room needs this password. Joining a room never does. |
+| `DEFAULT_PACKS` | `builtin` | Word packs a new room starts with: `builtin` (every built-in pack), `all` (built-in plus your own lists), or pack ids separated by commas, e.g. `everyday,myth`. The host can change it per room. |
 | `DATA_DIR` | `./data` (`/data` in Docker) | Where `rooms.json` is written. |
 | `WORDLISTS_DIR` | `$DATA_DIR/wordlists` | Folder of extra word lists. |
 | `PERSIST` | `true` | Set to `false` to keep rooms in memory only. |

@@ -94,6 +94,13 @@ test('serves the app, the packs and a health check', async () => {
   const packs = (await (await fetch(`${HTTP}/api/packs`)).json()).packs;
   assert.ok(packs.length >= 5);
   assert.equal(packs[0].id, 'everyday');
+  // A new room draws from every built-in pack, not just the first one.
+  const code = await createRoom();
+  const c = client(code, 'Packs');
+  await c.ready();
+  assert.deepEqual([...c.state.settings.packs].sort(), packs.filter((p) => p.source === 'builtin').map((p) => p.id).sort());
+  assert.equal(c.state.poolSize, packs.reduce((n, p) => n + p.count, 0));
+  c.ws.close();
   assert.equal((await fetch(`${HTTP}/api/rooms/nope-nope-00`)).status, 404);
   assert.equal((await fetch(`${HTTP}/../package.json`)).status, 404);
   assert.equal((await fetch(`${HTTP}/%2e%2e/package.json`)).status, 404);

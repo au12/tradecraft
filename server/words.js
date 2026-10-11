@@ -122,8 +122,18 @@ export function getPack(id) {
   return packs.get(id);
 }
 
-export function defaultPackId() {
-  return packs.has('everyday') ? 'everyday' : packs.keys().next().value;
+/** The packs a new room starts with (see DEFAULT_PACKS). */
+export function defaultPackIds() {
+  const setting = config.defaultPacks.toLowerCase();
+  const all = [...packs.values()];
+  let ids;
+  if (setting === 'all') ids = all.map((p) => p.id);
+  else if (setting === 'builtin') ids = all.filter((p) => p.source === 'builtin').map((p) => p.id);
+  else ids = setting.split(',').map((s) => s.trim()).filter((id) => packs.has(id));
+  // Never hand out an empty room: fall back to everything built in.
+  if (ids.length === 0) ids = all.filter((p) => p.source === 'builtin').map((p) => p.id);
+  if (ids.length === 0) ids = all.map((p) => p.id);
+  return ids;
 }
 
 /** Every word a room may draw from, given its settings. */
