@@ -61,7 +61,7 @@
 /* What a team, a bystander or the assassin looks like. */
 [data-team='red'], [data-kind='red'] { --team: var(--red); --on-team: #fff; }
 [data-team='blue'], [data-kind='blue'] { --team: var(--blue); --on-team: #fff; }
-[data-team='green'], [data-kind='green'], [data-kind='agent'] { --team: var(--green); --on-team: #fff; }
+[data-team='green'], [data-kind='green'] { --team: var(--green); --on-team: #fff; }
 [data-team='yellow'], [data-kind='yellow'] { --team: var(--yellow); --on-team: #1c1a10; }
 [data-kind='neutral'] { --team: var(--sand); --on-team: #2b2618; }
 [data-kind='assassin'] { --team: var(--black); --on-team: #fff; }
@@ -308,9 +308,6 @@ button.player:hover { outline: 1.5px solid var(--ink); }
 .counts input:checked + span { background: var(--ink); border-color: var(--ink); color: var(--desk); }
 .counts input:focus-visible + span { outline: 3px solid var(--ink); outline-offset: 2px; }
 
-.pips { display: inline-flex; gap: 4px; vertical-align: middle; margin: 0 4px; }
-.pips i { width: 11px; height: 11px; border-radius: 50%; background: var(--ink); }
-.pips i.spent { background: transparent; box-shadow: inset 0 0 0 1.5px var(--muted); }
 
 /* ───────────── Board ───────────── */
 
@@ -364,7 +361,7 @@ button.player:hover { outline: 1.5px solid var(--ink); }
 .card-shape svg { width: 100%; height: 100%; display: block; }
 .card[data-kind] .card-shape, .card[data-key] .card-shape { display: block; }
 
-/* Key view (spymasters, co-op sides, and everyone once the round ends):
+/* Key view (spymasters, and everyone once the round ends):
    a tinted card with a solid band, so "still face-down" stays distinct from
    "already found". */
 .card[data-key]:not([data-kind]) {
@@ -375,17 +372,11 @@ button.player:hover { outline: 1.5px solid var(--ink); }
 .card[data-key]:not([data-kind]) .card-shape { color: var(--key-ink); }
 .card[data-key='red'] { --key: var(--red); --key-ink: var(--red); }
 .card[data-key='blue'] { --key: var(--blue); --key-ink: var(--blue); }
-.card[data-key='green'], .card[data-key='agent'] { --key: var(--green); --key-ink: var(--green); }
+.card[data-key='green'] { --key: var(--green); --key-ink: var(--green); }
 .card[data-key='yellow'] { --key: var(--yellow); --key-ink: #8a6200; }
 .card[data-key='neutral'] { --key: var(--sand); --key-ink: #7a6f57; }
 .card[data-key='assassin']:not([data-kind]) { --key: var(--black); background: #3a3a40; color: #fff; }
 .card[data-key='assassin']:not([data-kind]) .card-shape { color: #fff; }
-/* Co-op, after the round: both keys side by side. */
-.card[data-key2]:not([data-kind]) {
-  box-shadow: inset 0 calc(-1 * max(6px, 17cqh)) 0 transparent, 0 max(2px, 4cqh) 0 var(--paper-edge);
-  background: linear-gradient(90deg, var(--k1) 0 50%, var(--k2) 50% 100%) bottom / 100% max(6px, 17cqh) no-repeat, var(--paper);
-  color: var(--card-ink);
-}
 /* Key view while the round is on: cards that have already been revealed sink
    into a dark shade of their colour with the word barely showing, so the
    spymaster's eye goes straight to what is still face-down. */
@@ -398,7 +389,6 @@ button.player:hover { outline: 1.5px solid var(--ink); }
 .is-keyview .card[data-kind] .card-word { opacity: 1; }
 .is-keyview .card[data-kind='assassin'] { --spent: #232327; color: #3a3a40; }
 
-.card.is-tried { opacity: 0.5; }
 .card.is-pointed { outline: 3px solid var(--card-ink); outline-offset: -3px; }
 :root[data-theme='dark'] .card.is-pointed { outline-color: #fff; outline-offset: 1px; }
 
@@ -407,8 +397,6 @@ button.player:hover { outline: 1.5px solid var(--ink); }
   font-style: normal; font-weight: 750; font-stretch: 80%; font-size: clamp(8px, 13cqh, 13px); line-height: 1.35;
   padding: 0 5px; border-radius: 4px; background: var(--card-ink); color: var(--paper);
 }
-.card-miss { position: absolute; z-index: 3; right: 3cqw; bottom: 5cqh; display: flex; gap: 3px; }
-.card-miss i { width: max(8px, 11cqh); height: max(8px, 11cqh); border-radius: 50%; background: var(--team); box-shadow: 0 0 0 1.5px var(--paper); }
 
 .confirm {
   position: absolute; z-index: 4; left: 6%; right: 6%; bottom: -6%;

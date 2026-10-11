@@ -252,56 +252,6 @@ test('host tools: settings, timers, kick, reconnect', async () => {
   for (const c of [ana, cy, dee2]) c.ws.close();
 });
 
-test('co-op: each side sees only its own key and they can win together', async () => {
-  const code = await createRoom();
-  const ana = client(code, 'Ana');
-  await ana.ready();
-  const bo = client(code, 'Bo');
-  const eve = client(code, 'Eve');
-  await Promise.all([bo.ready(), eve.ready()]);
-  await ana.do('settings', { patch: { mode: 'coop' } });
-  await ana.do('join', { team: 'red' });
-  await bo.do('join', { team: 'blue' });
-  await ana.until((x) => x.state.players.filter((p) => p.teams.length).length === 2);
-  await ana.do('start');
-  await Promise.all([ana, bo, eve].map((c) => c.until((x) => x.state.round, 'round')));
-
-  const count = (c, kind) => c.state.round.cards.filter((x) => x.k === kind).length;
-  for (const c of [ana, bo]) {
-    assert.equal(count(c, 'agent'), 9);
-    assert.equal(count(c, 'assassin'), 3);
-    assert.ok(c.state.round.cards.every((x) => x.ks === undefined));
-  }
-  assert.ok(eve.state.round.cards.every((x) => x.k === undefined), 'spectators see no key');
-  assert.match(await bo.do('join', { team: 'red' }), /other side/);
-
-  const side = { red: ana, blue: bo };
-  const keys = { red: ana.state.round.cards.map((c) => c.k), blue: bo.state.round.cards.map((c) => c.k) };
-  let n = 0;
-  while (ana.state.round.phase !== 'over' && n++ < 30) {
-    const cluer = ana.state.round.turn;
-    const guesser = cluer === 'red' ? 'blue' : 'red';
-    assert.equal(await side[cluer].do('clue', { word: `hint${n}`, count: 'inf' }), null);
-    await side[guesser].until((x) => x.state.round.phase === 'guess');
-    for (;;) {
-      const r = side[guesser].state.round;
-      if (r.phase !== 'guess') break;
-      const i = r.cards.findIndex((c, idx) => !c.r && keys[cluer][idx] === 'agent');
-      if (i === -1) {
-        await side[guesser].do('endGuess');
-        break;
-      }
-      await side[guesser].do('guess', { i });
-    }
-    await ana.until((x) => x.state.round.phase !== 'guess', 'turn to finish');
-  }
-  assert.equal(ana.state.round.outcome, 'win');
-  assert.equal(ana.state.coop.wins, 1);
-  await eve.until((x) => x.state.round.phase === 'over');
-  assert.ok(eve.state.round.cards.filter((c) => !c.r).every((c) => c.ks), 'both keys are shown at the end');
-  for (const c of [ana, bo, eve]) c.ws.close();
-});
-
 test('a player can sit on several teams, but only in one role', async () => {
   const code = await createRoom();
   const ana = client(code, 'Ana');
@@ -353,12 +303,14 @@ test('a player can sit on several teams, but only in one role', async () => {
   for (const c of [ana, bo, cy]) c.ws.close();
 });
 
-test('co-op keeps everyone to one side', async () => {
+test('co-op mode is gone: asking for it changes nothing', async () => {
   const code = await createRoom();
   const ana = client(code, 'Ana');
   await ana.ready();
-  await ana.do('settings', { patch: { mode: 'coop' } });
-  assert.equal(await ana.do('join', { team: 'red' }), null);
-  assert.match(await ana.do('join', { team: 'blue', also: true }), /only be on one side/);
+  assert.equal(await ana.do('settings', { patch: { mode: 'coop', coopTurns: 7 } }), null);
+  assert.equal(ana.state.settings.mode, undefined);
+  assert.equal(ana.state.settings.coopTurns, undefined);
+  assert.equal(ana.state.teams.length, 2);
+  assert.equal(ana.state.coop, undefined);
   ana.ws.close();
 });

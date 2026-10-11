@@ -1,22 +1,14 @@
 // Rules engine. Pure functions over a plain "round" object — no sockets, no
 // timers, no I/O — so it can be unit-tested and persisted as JSON.
 //
-// Two modes:
-//   classic  2–4 teams race to uncover their own agents. One spymaster per
-//            team gives clues; operatives guess.
-//   coop     Two sides share one board but hold different keys. Each side
-//            gives clues for the agents on its own key; the other side guesses.
-//            Everyone wins or loses together.
+// Two to four teams race to uncover their own agents. One spymaster per team
+// gives clues; operatives guess.
 
 import { randomInt, randomUUID } from 'node:crypto';
 
 export const TEAM_IDS = ['red', 'blue', 'green', 'yellow'];
 export const NEUTRAL = 'neutral';
 export const ASSASSIN = 'assassin';
-export const AGENT = 'agent';
-
-export const COOP_COLS = 5;
-export const COOP_AGENTS = 15;
 
 /** Fisher–Yates using a crypto-backed integer source (injectable for tests). */
 export function shuffle(list, rnd = randomInt) {
@@ -56,7 +48,6 @@ function baseRound({ mode, cols, order }) {
     marks: {}, // card index -> [playerId]
     log: [],
     winner: null,
-    outcome: null, // coop: win | lose
     reason: null,
     deadline: null,
     pausedLeft: null,
@@ -90,46 +81,6 @@ export function createClassicRound({ teams, cols, words, assassins = 1, firstTea
   return round;
 }
 
-// The 25 key pairs for a co-op board: [what side A sees, what side B sees].
-// Each side sees 9 agents and 3 assassins; 3 agents are shared, so there are
-// 15 distinct agents to find.
-const COOP_PAIRS = [
-  ...Array(3).fill([AGENT, AGENT]),
-  [ASSASSIN, ASSASSIN],
-  [ASSASSIN, AGENT],
-  [AGENT, ASSASSIN],
-  [ASSASSIN, NEUTRAL],
-  [NEUTRAL, ASSASSIN],
-  ...Array(5).fill([AGENT, NEUTRAL]),
-  ...Array(5).fill([NEUTRAL, AGENT]),
-  ...Array(7).fill([NEUTRAL, NEUTRAL]),
-];
-
-export function createCoopRound({ teams, words, turns = 9, firstTeam, rnd = randomInt }) {
-  const total = COOP_COLS * COOP_COLS;
-  if (words.length < total) throw new Error('Not enough words for this board');
-  if (teams.length !== 2) throw new Error('Co-op needs exactly two sides');
-  const [a, b] = teams;
-  const start = firstTeam && teams.includes(firstTeam) ? firstTeam : teams[rnd(2)];
-  const order = start === a ? [a, b] : [b, a];
-
-  const pairs = shuffle(COOP_PAIRS, rnd);
-  const round = baseRound({ mode: 'coop', cols: COOP_COLS, order });
-  round.cards = words.slice(0, total).map((word, i) => ({
-    word,
-    keys: { [a]: pairs[i][0], [b]: pairs[i][1] },
-    revealed: false, // true once it is a found agent, or the assassin that ended the game
-    result: null,
-    miss: [], // sides that guessed this card and hit a bystander
-    by: null,
-  }));
-  round.tokens = turns;
-  round.turnsTotal = turns;
-  round.sudden = false;
-  round.agentsLeft = COOP_AGENTS;
-  return round;
-}
-
 // ───────────────────────────── helpers ─────────────────────────────
 
 const fail = (error) => ({ ok: false, error });
@@ -139,16 +90,10 @@ export function currentTeam(round) {
   return round.order[round.turn];
 }
 
-function otherSide(round, side) {
-  return round.order.find((t) => t !== side);
-}
-
 /** The team whose members may guess right now (null if nobody may). */
 export function guessingTeams(round) {
   if (round.phase !== 'guess') return [];
-  if (round.mode === 'classic') return [currentTeam(round)];
-  if (round.sudden) return round.order.slice();
-  return [otherSide(round, currentTeam(round))];
+  return [currentTeam(round)];
 }
 
 function log(round, entry) {
@@ -164,7 +109,7 @@ function finish(round, fields) {
   round.deadline = null;
   round.pausedLeft = null;
   round.endedAt = Date.now();
-  log(round, { type: 'end', winner: round.winner, outcome: round.outcome, reason: round.reason });
+  log(round, { type: 'end', winner: round.winner, reason: round.reason });
 }
 
 const norm = (s) => String(s).toUpperCase().normalize('NFKD').replace(/[^\p{L}\p{N}]/gu, '');
@@ -202,7 +147,6 @@ function parseCount(count) {
 
 export function giveClue(round, team, { word, count }, by, { strict = false } = {}) {
   if (round.phase !== 'clue') return fail('It is not time for a clue.');
-  if (round.mode === 'coop' && round.sudden) return fail('No more clues — it is sudden death.');
   if (currentTeam(round) !== team) return fail('It is not your turn to give a clue.');
   const text = String(word ?? '').trim().replace(/\s+/g, ' ');
   if (text.length > 30) return fail('Keep the clue under 30 characters.');
@@ -281,96 +225,29 @@ function classicGuess(round, team, index, by) {
   return ok(events);
 }
 
-function coopAgentsToClue(round, side) {
-  return round.cards.filter((c) => !c.revealed && c.keys[side] === AGENT).length;
-}
-
-function endCoopTurn(round) {
-  round.tokens -= 1;
-  round.clue = null;
-  round.guessesLeft = null;
-  round.guessesMade = 0;
-  round.marks = {};
-  if (round.tokens <= 0) {
-    round.tokens = 0;
-    round.sudden = true;
-    round.phase = 'guess';
-    log(round, { type: 'sudden' });
-    return;
-  }
-  // Clue duty alternates, unless the other side has nothing left to clue.
-  const next = otherSide(round, currentTeam(round));
-  if (coopAgentsToClue(round, next) > 0) round.turn = round.order.indexOf(next);
-  round.phase = 'clue';
-}
-
-function coopGuess(round, side, index, by) {
-  const card = round.cards[index];
-  if (card.miss.includes(side)) return fail('Your side already tried that card.');
-  // A guess is always judged against the *other* side's key.
-  const result = card.keys[otherSide(round, side)];
-  round.marks = {};
-  log(round, { type: 'guess', team: side, by, word: card.word, result, no: round.clueNo });
-  const events = [{ type: 'reveal', index, result, team: side }];
-
-  if (result === ASSASSIN) {
-    card.revealed = true;
-    card.result = ASSASSIN;
-    card.by = side;
-    finish(round, { outcome: 'lose', reason: 'assassin' });
-    return ok(events);
-  }
-  if (result === AGENT) {
-    card.revealed = true;
-    card.result = AGENT;
-    card.by = side;
-    round.agentsLeft -= 1;
-    round.guessesMade += 1;
-    if (round.agentsLeft === 0) {
-      finish(round, { outcome: 'win', reason: 'agents' });
-    } else if (round.guessesLeft !== null) {
-      round.guessesLeft -= 1;
-      if (round.guessesLeft <= 0 && !round.sudden) endCoopTurn(round);
-    }
-    return ok(events);
-  }
-  // Bystander.
-  card.miss.push(side);
-  if (round.sudden) {
-    finish(round, { outcome: 'lose', reason: 'time' });
-  } else {
-    endCoopTurn(round);
-  }
-  return ok(events);
-}
-
 export function guess(round, team, index, by) {
   if (round.phase !== 'guess') return fail('Wait for the clue.');
   if (!guessingTeams(round).includes(team)) return fail('It is not your turn to guess.');
   const card = round.cards[index];
   if (!card) return fail('No such card.');
   if (card.revealed) return fail('That card is already revealed.');
-  return round.mode === 'classic' ? classicGuess(round, team, index, by) : coopGuess(round, team, index, by);
+  return classicGuess(round, team, index, by);
 }
 
 export function endGuessing(round, team, by) {
   if (round.phase !== 'guess') return fail('There is nothing to end right now.');
-  if (round.mode === 'coop' && round.sudden) return fail('Sudden death — keep guessing until every agent is found.');
   if (!guessingTeams(round).includes(team)) return fail('It is not your turn.');
   log(round, { type: 'pass', team, by, no: round.clueNo });
-  if (round.mode === 'classic') nextClassicTurn(round);
-  else endCoopTurn(round);
+  nextClassicTurn(round);
   return ok([{ type: 'pass' }]);
 }
 
 /** The turn timer ran out. */
 export function timeout(round) {
   if (round.phase === 'over') return fail('Round is over.');
-  if (round.mode === 'coop' && round.sudden) return fail('No timer in sudden death.');
   const team = round.phase === 'clue' ? currentTeam(round) : guessingTeams(round)[0];
   log(round, { type: 'timeout', team, phase: round.phase });
-  if (round.mode === 'classic') nextClassicTurn(round);
-  else endCoopTurn(round);
+  nextClassicTurn(round);
   return ok([{ type: 'timeout' }]);
 }
 
@@ -380,7 +257,6 @@ export function toggleMark(round, team, index, playerId) {
   if (!guessingTeams(round).includes(team)) return fail('It is not your turn to guess.');
   const card = round.cards[index];
   if (!card || card.revealed) return fail('That card is already revealed.');
-  if (round.mode === 'coop' && card.miss.includes(team)) return fail('Your side already tried that card.');
   const list = round.marks[index] ?? [];
   round.marks[index] = list.includes(playerId) ? list.filter((p) => p !== playerId) : [...list, playerId];
   if (round.marks[index].length === 0) delete round.marks[index];
@@ -397,5 +273,5 @@ export function removeMarksOf(round, playerId) {
 /** Host ended the round early. */
 export function abandon(round) {
   if (round.phase === 'over') return;
-  finish(round, { reason: 'abandoned', outcome: round.mode === 'coop' ? 'lose' : null });
+  finish(round, { reason: 'abandoned' });
 }

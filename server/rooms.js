@@ -28,11 +28,9 @@ export function cleanName(raw) {
 
 function defaultSettings() {
   return {
-    mode: 'classic',
     teamCount: 2,
     cols: 5,
     assassins: 1,
-    coopTurns: 9,
     packs: defaultPackIds(),
     customWords: [],
     customOnly: false,
@@ -57,11 +55,11 @@ function actingTeam(r, me) {
 }
 
 export function activeTeamIds(room) {
-  return game.TEAM_IDS.slice(0, room.settings.mode === 'coop' ? 2 : room.settings.teamCount);
+  return game.TEAM_IDS.slice(0, room.settings.teamCount);
 }
 
 function cardsNeeded(settings) {
-  return settings.mode === 'coop' ? game.COOP_COLS ** 2 : settings.cols ** 2;
+  return settings.cols ** 2;
 }
 
 export class Rooms {
@@ -86,7 +84,6 @@ export class Rooms {
       locked: false,
       settings: defaultSettings(),
       teams: game.TEAM_IDS.map((id) => ({ id, name: TEAM_NAMES[id], wins: 0 })),
-      coop: { wins: 0, losses: 0 },
       players: new Map(),
       banned: [],
       round: null,
@@ -225,32 +222,20 @@ export class Rooms {
     let round = null;
     if (r) {
       const over = r.phase === 'over';
-      const side = me.teams.find((t) => r.order.includes(t)); // co-op: one side only
-      const onBoard = Boolean(side);
-      const seesClassicKey = r.mode === 'classic' && (over || (me.role === 'spymaster' && onBoard));
+      const onBoard = me.teams.some((t) => r.order.includes(t));
+      const seesKey = over || (me.role === 'spymaster' && onBoard);
       const cards = r.cards.map((c, i) => {
         const v = { w: c.word, r: null };
-        if (r.mode === 'classic') {
-          if (c.revealed) {
-            v.r = c.owner;
-            v.by = c.by;
-          }
-          if (seesClassicKey) v.k = c.owner;
-        } else {
-          if (c.revealed) {
-            v.r = c.result;
-            v.by = c.by;
-          }
-          if (c.miss.length) v.x = c.miss;
-          if (over) v.ks = c.keys;
-          else if (onBoard) v.k = c.keys[side];
+        if (c.revealed) {
+          v.r = c.owner;
+          v.by = c.by;
         }
+        if (seesKey) v.k = c.owner;
         if (r.marks[i]) v.m = r.marks[i];
         return v;
       });
       round = {
         id: r.id,
-        mode: r.mode,
         cols: r.cols,
         rows: r.rows,
         order: r.order,
@@ -261,15 +246,10 @@ export class Rooms {
         guessesLeft: r.guessesLeft,
         guessesMade: r.guessesMade,
         winner: r.winner,
-        outcome: r.outcome,
         reason: r.reason,
         loser: r.loser ?? null,
         remaining: r.remaining,
         eliminated: r.eliminated,
-        tokens: r.tokens,
-        turnsTotal: r.turnsTotal,
-        sudden: r.sudden,
-        agentsLeft: r.agentsLeft,
         deadline: r.deadline,
         pausedLeft: r.pausedLeft,
         cards,
@@ -292,7 +272,6 @@ export class Rooms {
       poolSize: room.poolSize,
       cardsNeeded: cardsNeeded(s),
       teams: room.teams.filter((t) => active.includes(t.id)),
-      coop: room.coop,
       players: [...room.players.values()].map((p) => {
         const teams = p.teams.filter((t) => active.includes(t));
         return { id: p.id, name: p.name, teams, role: teams.length ? p.role : 'spectator', online: p.online };
@@ -318,11 +297,11 @@ export class Rooms {
     room.timer = null;
     const r = room.round;
     if (!r || r.phase === 'over') return;
-    const key = `${r.phase}:${r.turn}:${r.clueNo}:${r.tokens ?? ''}`;
+    const key = `${r.phase}:${r.turn}:${r.clueNo}`;
     if (r.timerKey !== key) {
       r.timerKey = key;
       const s = room.settings;
-      const secs = r.mode === 'coop' && r.sudden ? 0 : r.phase === 'clue' ? s.clueSeconds : s.guessSeconds;
+      const secs = r.phase === 'clue' ? s.clueSeconds : s.guessSeconds;
       r.pausedLeft = null;
       r.autoPaused = false;
       r.deadline = secs > 0 ? now() + secs * 1000 : null;
@@ -347,8 +326,7 @@ export class Rooms {
     if (r && r.phase === 'over' && !r.scored) {
       r.scored = true;
       if (r.reason !== 'abandoned') {
-        if (r.mode === 'classic' && r.winner) room.teams.find((t) => t.id === r.winner).wins += 1;
-        if (r.mode === 'coop') room.coop[r.outcome === 'win' ? 'wins' : 'losses'] += 1;
+        if (r.winner) room.teams.find((t) => t.id === r.winner).wins += 1;
       }
     }
     this.syncTimer(room);
@@ -373,13 +351,11 @@ export class Rooms {
       return null;
     }
     if (!activeTeamIds(room).includes(team)) return 'That team is not in this game.';
-    const coop = room.settings.mode === 'coop';
-    const wanted = coop ? 'operative' : role === 'spymaster' ? 'spymaster' : 'operative';
+    const wanted = role === 'spymaster' ? 'spymaster' : 'operative';
     const teamName = room.teams.find((t) => t.id === team).name;
     const adding = also && player.teams.length > 0;
 
     if (adding) {
-      if (coop) return 'In co-op you can only be on one side, because each side has its own key.';
       if (wanted !== player.role) {
         return player.role === 'spymaster'
           ? 'You’ve seen the key, so you can only add yourself as a spymaster on another team.'
@@ -390,13 +366,8 @@ export class Rooms {
       return null;
     }
 
-    if (live(room) && !force) {
-      if (coop && player.sawKey && player.sawKey !== `${r.id}:${team}`) {
-        return 'You have seen the other side’s key this round. You can switch sides next round.';
-      }
-      if (!coop && wanted === 'operative' && player.sawKey === r.id) {
-        return 'You have seen the key this round, so you can’t guess. You can switch next round.';
-      }
+    if (live(room) && !force && wanted === 'operative' && player.sawKey === r.id) {
+      return 'You have seen the key this round, so you can’t guess. You can switch next round.';
     }
     if (wanted === 'spymaster') {
       const holder = [...room.players.values()].find((p) => p.id !== player.id && p.role === 'spymaster' && p.teams.includes(team));
@@ -418,10 +389,7 @@ export class Rooms {
     if (r) game.removeMarksOf(r, player.id);
     player.teams = adding ? inTeamOrder([...player.teams, team]) : [team];
     player.role = wanted;
-    if (live(room)) {
-      if (coop) player.sawKey = `${r.id}:${team}`;
-      else if (wanted === 'spymaster') player.sawKey = r.id;
-    }
+    if (live(room) && wanted === 'spymaster') player.sawKey = r.id;
     return null;
   }
 
@@ -435,7 +403,6 @@ export class Rooms {
 
   dealTeams(room) {
     const teams = activeTeamIds(room);
-    const coop = room.settings.mode === 'coop';
     // People who have been spymaster least go first, so the job rotates.
     const pool = game
       .shuffle([...room.players.values()].filter((p) => p.online))
@@ -448,7 +415,7 @@ export class Rooms {
     }
     pool.forEach((p, i) => {
       p.teams = [teams[(i + offset) % teams.length]];
-      p.role = !coop && i < teams.length ? 'spymaster' : 'operative';
+      p.role = i < teams.length ? 'spymaster' : 'operative';
     });
     return null;
   }
@@ -464,12 +431,8 @@ export class Rooms {
     const members = (team, role) => [...room.players.values()].filter((p) => p.teams.includes(team) && (!role || p.role === role));
     for (const team of teams) {
       const name = room.teams.find((t) => t.id === team).name;
-      if (s.mode === 'coop') {
-        if (members(team).length === 0) return `${name} needs at least one player.`;
-      } else {
-        if (members(team, 'spymaster').length === 0) return `${name} needs a spymaster.`;
-        if (members(team, 'operative').length === 0) return `${name} needs at least one operative.`;
-      }
+      if (members(team, 'spymaster').length === 0) return `${name} needs a spymaster.`;
+      if (members(team, 'operative').length === 0) return `${name} needs at least one operative.`;
     }
 
     const need = cardsNeeded(s);
@@ -492,18 +455,13 @@ export class Rooms {
     const firstTeam = last === -1 ? teams[randomInt(teams.length)] : teams[(last + 1) % teams.length];
     room.lastStarter = firstTeam;
 
-    room.round =
-      s.mode === 'coop'
-        ? game.createCoopRound({ teams, words, turns: s.coopTurns, firstTeam })
-        : game.createClassicRound({ teams, cols: s.cols, words, assassins: s.assassins, firstTeam });
+    room.round = game.createClassicRound({ teams, cols: s.cols, words, assassins: s.assassins, firstTeam });
     room.roundNo += 1;
 
     for (const p of room.players.values()) {
       p.sawKey = null;
-      const mine = p.teams.filter((t) => teams.includes(t));
-      if (mine.length === 0) continue;
-      if (s.mode === 'coop') p.sawKey = `${room.round.id}:${mine[0]}`;
-      else if (p.role === 'spymaster') {
+      if (!p.teams.some((t) => teams.includes(t))) continue;
+      if (p.role === 'spymaster') {
         p.sawKey = room.round.id;
         p.spyRounds += 1;
       }
@@ -519,10 +477,6 @@ export class Rooms {
     const next = { ...s };
     const intIn = (v, min, max) => Number.isInteger(v) && v >= min && v <= max;
 
-    if ('mode' in patch) {
-      if (!['classic', 'coop'].includes(patch.mode)) return 'Unknown mode.';
-      next.mode = patch.mode;
-    }
     if ('teamCount' in patch) {
       if (!intIn(patch.teamCount, 2, 4)) return 'Pick 2 to 4 teams.';
       next.teamCount = patch.teamCount;
@@ -534,10 +488,6 @@ export class Rooms {
     if ('assassins' in patch) {
       if (!intIn(patch.assassins, 0, 3)) return 'Pick 0 to 3 assassins.';
       next.assassins = patch.assassins;
-    }
-    if ('coopTurns' in patch) {
-      if (!intIn(patch.coopTurns, 5, 12)) return 'Pick 5 to 12 turns.';
-      next.coopTurns = patch.coopTurns;
     }
     for (const key of ['clueSeconds', 'guessSeconds']) {
       if (key in patch) {
@@ -555,8 +505,8 @@ export class Rooms {
       const raw = Array.isArray(patch.customWords) ? patch.customWords : String(patch.customWords ?? '').split(/[\n,;]+/);
       next.customWords = uniqueWords(raw.slice(0, MAX_CUSTOM_WORDS * 2).map(cleanWord)).slice(0, MAX_CUSTOM_WORDS);
     }
-    const structural = ['mode', 'teamCount', 'cols', 'assassins', 'coopTurns'].some((k) => next[k] !== s[k]);
-    if (structural && live(room)) return 'End the current round before changing the mode, teams or board.';
+    const structural = ['teamCount', 'cols', 'assassins'].some((k) => next[k] !== s[k]);
+    if (structural && live(room)) return 'End the current round before changing the teams or board.';
 
     const timersChanged = next.clueSeconds !== s.clueSeconds || next.guessSeconds !== s.guessSeconds;
     room.settings = next;
@@ -568,11 +518,6 @@ export class Rooms {
       const active = activeTeamIds(room);
       for (const p of room.players.values()) {
         p.teams = p.teams.filter((t) => active.includes(t));
-        if (next.mode !== s.mode) {
-          // Co-op is one side per person; classic starts everyone as an operative.
-          if (next.mode === 'coop') p.teams = p.teams.slice(0, 1);
-          p.role = 'operative';
-        }
         if (p.teams.length === 0) p.role = 'spectator';
       }
     }
@@ -609,8 +554,7 @@ export class Rooms {
 
       case 'clue': {
         if (!r) return 'The game has not started.';
-        const coop = r.mode === 'coop';
-        if (!coop && me.role !== 'spymaster') return 'Only the spymaster gives clues.';
+        if (me.role !== 'spymaster') return 'Only the spymaster gives clues.';
         const res = game.giveClue(r, actingTeam(r, me), { word: msg.word, count: msg.count }, me.name, {
           strict: room.settings.strictClues,
         });
@@ -620,7 +564,7 @@ export class Rooms {
       case 'mark':
       case 'guess': {
         if (!r) return 'The game has not started.';
-        if (r.mode === 'classic' && me.role !== 'operative') return 'Spymasters don’t guess.';
+        if (me.role !== 'operative') return 'Spymasters don’t guess.';
         const index = Number(msg.i);
         if (!Number.isInteger(index)) return 'No such card.';
         const team = actingTeam(r, me);
@@ -630,7 +574,7 @@ export class Rooms {
       }
       case 'endGuess': {
         if (!r) return 'The game has not started.';
-        if (r.mode === 'classic' && me.role !== 'operative') return 'Only operatives can end the guessing.';
+        if (me.role !== 'operative') return 'Only operatives can end the guessing.';
         const res = game.endGuessing(r, actingTeam(r, me), me.name);
         if (!res.ok) return res.error;
         break;
@@ -669,7 +613,6 @@ export class Rooms {
         err = hostOnly();
         if (!err) {
           room.teams.forEach((t) => (t.wins = 0));
-          room.coop = { wins: 0, losses: 0 };
         }
         break;
       case 'lock':
@@ -795,6 +738,13 @@ export class Rooms {
           ]),
         ),
       };
+      // Co-op mode was removed: drop its settings, and any co-op board, so the
+      // room comes back as a normal two-team lobby.
+      if (saved.settings?.mode === 'coop') room.settings.teamCount = 2;
+      delete room.settings.mode;
+      delete room.settings.coopTurns;
+      delete room.coop;
+      if (room.round && room.round.mode !== 'classic') room.round = null;
       room.settings.packs = room.settings.packs.filter((id) => getPack(id));
       // A pack that was removed or merged since this room was saved.
       if (room.settings.packs.length === 0 && room.settings.customWords.length === 0) {
