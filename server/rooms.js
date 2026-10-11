@@ -8,7 +8,7 @@ import { randomBytes, randomInt } from 'node:crypto';
 import * as game from './game.js';
 import { config, log } from './config.js';
 import { roomCode } from './names.js';
-import { cleanWord, defaultPackId, getPack, uniqueWords, wordPool } from './words.js';
+import { cleanWord, defaultPackId, getPack, uniqueWords, wordKey, wordPool } from './words.js';
 
 const TEAM_NAMES = { red: 'Red', blue: 'Blue', green: 'Green', yellow: 'Yellow' };
 const SEAT_TAKEOVER_MS = 30_000; // an offline spymaster's seat can be claimed after this
@@ -479,13 +479,13 @@ export class Rooms {
     }
     // Avoid repeating words from earlier rounds until the pool runs dry.
     const used = new Set(room.used);
-    let fresh = pool.filter((w) => !used.has(w.toUpperCase()));
+    let fresh = pool.filter((w) => !used.has(wordKey(w)));
     if (fresh.length < need) {
       room.used = [];
       fresh = pool;
     }
     const words = game.shuffle(fresh).slice(0, need);
-    room.used.push(...words.map((w) => w.toUpperCase()));
+    room.used.push(...words.map(wordKey));
 
     // The starting team rotates from round to round.
     const last = teams.indexOf(room.lastStarter);
@@ -796,6 +796,10 @@ export class Rooms {
         ),
       };
       room.settings.packs = room.settings.packs.filter((id) => getPack(id));
+      // A pack that was removed or merged since this room was saved.
+      if (room.settings.packs.length === 0 && room.settings.customWords.length === 0) {
+        room.settings.packs = [defaultPackId()].filter(Boolean);
+      }
       room.poolSize = wordPool(room.settings).length;
       const r = room.round;
       if (r && r.deadline) {

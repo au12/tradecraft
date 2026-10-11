@@ -35,7 +35,7 @@ Tradecraft is a ground-up rewrite of [cazier/clonenames](https://github.com/cazi
 
 **Words**
 
-- Eight built-in packs (about 1,200 words). Pick any combination per room.
+- Ten built-in packs, about 1,700 words, with no word in more than one pack: Everyday, Arts & Games, Body & Motion, Food & Drink, Home & Wardrobe, Myth & History, People & Mischief, Places & Travel, Tools & Tech and Wild World. Pick any combination per room.
 - Paste your own words into a room, or drop word-list files on the server.
 - Words aren't repeated from round to round until the pool runs out.
 
@@ -141,7 +141,7 @@ The `# key: value` lines are optional. Put the file in `data/wordlists/` (any ex
 
 This is the same layout the original Clonenames used, so lists from `src/clonenames/wordlists/` can be copied in unchanged.
 
-The built-in packs in [`wordlists/`](wordlists) were written for this project.
+The built-in packs in [`wordlists/`](wordlists) were made for this project. A test (`test/words.test.js`) fails if the same word ends up in two of them, so run `npm test` after editing a pack. Accented words such as *piñata* are fine: they display as written, and for duplicate checks and clue checks they count the same as the plain spelling.
 
 ## Behind a reverse proxy
 

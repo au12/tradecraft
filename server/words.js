@@ -15,20 +15,28 @@ const MAX_WORD = 28;
 
 export function cleanWord(raw) {
   return String(raw)
+    // One canonical form for accented letters: "piñata" typed on a Mac can
+    // arrive as "pin" + a separate combining tilde.
+    .normalize('NFC')
     .replace(/[\u0000-\u001f\u007f]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, MAX_WORD);
 }
 
-/** Case-insensitive de-duplication that keeps the first spelling seen. */
+/** "Piñata", "PINATA" and "pinata" all count as the same word. */
+export function wordKey(word) {
+  return String(word).normalize('NFKD').replace(/\p{M}/gu, '').toUpperCase();
+}
+
+/** Case- and accent-insensitive de-duplication that keeps the first spelling seen. */
 export function uniqueWords(list) {
   const seen = new Set();
   const out = [];
   for (const raw of list) {
     const word = cleanWord(raw);
     if (!word) continue;
-    const key = word.toUpperCase();
+    const key = wordKey(word);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(word);

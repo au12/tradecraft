@@ -199,7 +199,7 @@ test('classic game: wrong card passes the turn, assassin ends it, wins are count
 test('host tools: settings, timers, kick, reconnect', async () => {
   const t = await classicTable();
   const { ana, bo, cy, dee } = t;
-  assert.equal(await ana.do('settings', { patch: { cols: 10, packs: ['python-builtins'] } }), null);
+  assert.equal(await ana.do('settings', { patch: { cols: 10, packs: ['people'] } }), null);
   assert.equal(ana.state.settings.cols, 10);
   assert.match(await ana.do('start'), /needs 100 words/);
   await ana.do('settings', { patch: { cols: 5, packs: ['everyday'], customWords: 'Zebra crossing, zebra crossing\nQuokka', clueSeconds: 30 } });
