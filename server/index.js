@@ -6,6 +6,7 @@
 //   POST /api/rooms        create a room            -> { code }
 //   GET  /api/rooms/<code> does this room exist?    -> { exists, players, locked }
 //   GET  /healthz          liveness probe
+//   GET  /arcade.json      where the arcade is (only with ARCADE_URL set)
 //   WS   /ws               game traffic (JSON messages)
 
 import http from 'node:http';
@@ -31,13 +32,20 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
-const SECURITY_HEADERS = {
-  'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'same-origin',
-  'X-Frame-Options': 'SAMEORIGIN',
-  'Content-Security-Policy':
-    "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; base-uri 'self'; form-action 'self'",
-};
+// With an arcade configured, the game may be shown in its frame and may talk to it.
+const SECURITY_HEADERS = config.arcadeUrl
+  ? {
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'same-origin',
+      'Content-Security-Policy': `default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss: ${config.arcadeUrl}; base-uri 'self'; form-action 'self'; frame-ancestors 'self' ${config.arcadeUrl}`,
+    }
+  : {
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'same-origin',
+      'X-Frame-Options': 'SAMEORIGIN',
+      'Content-Security-Policy':
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; base-uri 'self'; form-action 'self'",
+    };
 
 loadPacks();
 const rooms = new Rooms();
@@ -200,6 +208,12 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
 
+  // Where the arcade is, for the arcade script when the game is opened on its own.
+  if (pathname === '/arcade.json') {
+    if (!config.arcadeUrl) return send(res, 404, { error: 'Not found.' });
+    return send(res, 200, { url: config.arcadeUrl }, { 'Cache-Control': 'no-cache' });
+  }
+
   if (pathname === '/manifest.webmanifest') {
     const manifest = JSON.parse(fs.readFileSync(path.join(config.publicDir, 'manifest.webmanifest'), 'utf8'));
     manifest.name = manifest.short_name = config.siteName;
@@ -311,6 +325,7 @@ setInterval(() => rooms.sweep(), 10 * 60_000).unref();
 
 server.listen(config.port, config.host, () => {
   log.info(`${config.siteName} is listening on http://${config.host}:${config.port}${config.basePath || ''}`);
+  if (config.arcadeUrl) log.info(`Arcade: ${config.arcadeUrl} may show this game and receive its results`);
 });
 
 function shutdown(signal) {

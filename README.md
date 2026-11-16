@@ -89,6 +89,7 @@ The repository includes a GitHub Actions workflow ([`.github/workflows/docker.ym
    | Extra Parameters | `--user 99:100` |
    | Port | container `3000`, host `3000` (or any free port) |
    | Path | container `/data`, host `/mnt/user/appdata/tradecraft` |
+   | Variable | `ARCADE_URL`, your arcade's address, if you run the [au12 Arcade](#in-the-arcade) |
 
 To update later, push your changes, let the workflow finish, then use **Check for Updates** on the Docker tab.
 
@@ -123,6 +124,7 @@ Everything is an environment variable. All are optional.
 | `MAX_PLAYERS_PER_ROOM` | `64` | Upper limit on people in a room. |
 | `ALLOWED_ORIGINS` | *(any)* | Comma-separated origins allowed to open the WebSocket, e.g. `https://games.example.com`. |
 | `LOG_LEVEL` | `info` | `info`, `debug` or `silent`. |
+| `ARCADE_URL` | *(empty)* | Address of your [au12 Arcade](#in-the-arcade), e.g. `https://arcade.example.com`. Lets the arcade show the game and receive wins and losses. |
 
 ## Word lists
 
@@ -155,6 +157,19 @@ For a sub-path, set `BASE_PATH=/tradecraft` and forward `/tradecraft/` to the ap
 
 If you put this on the public internet, consider setting `CREATE_PASSWORD` so strangers can't open rooms on your server, and `ALLOWED_ORIGINS` to your own address.
 
+## In the arcade
+
+Tradecraft can run inside the [au12 Arcade](https://github.com/au12/arcade), the family launcher that puts every game behind one installable app, with shared players and high scores across the games (and a real cabinet, if you build one).
+
+Set `ARCADE_URL` to the arcade's address, for example `https://arcade.example.com`. Then:
+
+- Inside the arcade, you sit down under your arcade name, with no name to type. Each arcade player keeps a seat of their own, so the family can take turns at one screen.
+- The arcade shows the room's link as a QR code, so everyone else joins from their phones.
+- Every round you played in counts as a win (one of your teams took it) or a loss. Rounds earn tickets and go on the arcade's Tradecraft leaderboard, and a win as spymaster or by the other side's assassin has an achievement of its own. Rounds called off, rounds you only watched, and a spymaster running every team don't count.
+- Played on its own rather than inside the arcade, the page still reports to the arcade for whoever that browser last played as there. It finds the arcade through `/arcade.json`, which the server only answers when `ARCADE_URL` is set.
+
+The server lets the arcade's address show the game in a frame (`frame-ancestors`) and talk to it (`connect-src`). With `ARCADE_URL` empty, nothing changes.
+
 ## How it is put together
 
 ```text
@@ -167,6 +182,8 @@ server/
   names.js    room codes
   config.js   environment variables
 public/       the client: plain HTML, CSS and ES modules, served as-is
+  js/arcade.js          the au12 Arcade: whose seat this is, and the rounds it hears of
+  js/vendor/arcade.js   the arcade's own script (MIT), unchanged
 wordlists/    built-in packs
 test/         rules tests and end-to-end tests over real WebSockets
 ```
