@@ -5,6 +5,7 @@ import { Connection } from './net.js';
 import { play, setSound, soundOn } from './sound.js';
 import { renderBoard } from './board.js';
 import { myMove, renderRails, renderStatus } from './view.js';
+import { arcadeInvite, arcadeName, arcadeReady, arcadeReport, arcadeStatus, personal } from './arcade.js';
 
 const cfg = JSON.parse($('#config').textContent);
 const KINDS_FOR_HOME = [...Array(9).fill('red'), ...Array(8).fill('blue'), ...Array(7).fill('neutral'), 'assassin'];
@@ -57,8 +58,8 @@ function boot() {
   hydrateIcons();
   bindGlobal();
   const code = currentRoomCode();
-  if (code) enterRoom(code);
-  else showHome();
+  // In the arcade, wait to hear who is playing: each player has a seat of their own.
+  arcadeReady().then(() => (code ? enterRoom(code) : showHome()));
 }
 
 // ───────────────────────── home ─────────────────────────
@@ -79,6 +80,8 @@ async function createRoom() {
 function showHome() {
   show('home');
   document.title = cfg.siteName;
+  arcadeStatus('menu');
+  arcadeInvite(null);
   $('#create-password-row').hidden = !cfg.needsPassword;
   dealHomeKey();
 
@@ -111,11 +114,11 @@ function showHome() {
 // ───────────────────────── room ─────────────────────────
 
 function token() {
-  let t = store.get('token');
+  let t = store.get(personal('token'));
   if (!t || t.length < 16) {
     const bytes = crypto.getRandomValues(new Uint8Array(18));
     t = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
-    store.set('token', t);
+    store.set(personal('token'), t);
   }
   return t;
 }
@@ -124,7 +127,7 @@ function askName({ rename = false } = {}) {
   const dialog = $('#dlg-name');
   dialog.dataset.rename = rename ? '1' : '';
   $('#name-submit').textContent = rename ? 'Save name' : 'Join room';
-  $('#name-input').value = store.get('name', '');
+  $('#name-input').value = store.get(personal('name')) ?? arcadeName();
   if (!dialog.open) dialog.showModal();
   $('#name-input').select();
 }
@@ -133,6 +136,7 @@ function enterRoom(code) {
   show('room');
   $('#invite-code').textContent = code;
   document.title = `${code} | ${cfg.siteName}`;
+  arcadeInvite(api(`r/${encodeURIComponent(code)}`));
   buildClueCounts();
   fetch(api('api/packs'))
     .then((r) => r.json())
@@ -143,7 +147,8 @@ function enterRoom(code) {
     })
     .catch(() => {});
 
-  const name = store.get('name');
+  // Someone the arcade knows sits straight down under their arcade name.
+  const name = store.get(personal('name')) ?? arcadeName();
   if (name) return connect(code, name);
   // No name yet: make sure the room exists before asking for one.
   fetch(api(`api/rooms/${encodeURIComponent(code)}`))
@@ -200,6 +205,8 @@ function render(next) {
   if ($('#dlg-player').open) renderPlayerDialog($('#dlg-player').dataset.id);
   effects(prev, next);
   updateTitle();
+  arcadeReport(prev, next);
+  arcadeStatus(!next.round ? 'menu' : next.round.phase === 'over' ? 'over' : 'playing');
 }
 
 function updateTitle() {
@@ -564,7 +571,7 @@ function bindGlobal() {
     event.preventDefault();
     const name = $('#name-input').value.replace(/\s+/g, ' ').trim().slice(0, 20);
     if (!name) return $('#name-input').focus();
-    store.set('name', name);
+    store.set(personal('name'), name);
     const dialog = $('#dlg-name');
     dialog.close();
     if (dialog.dataset.rename && conn && state) send('rename', { name });
